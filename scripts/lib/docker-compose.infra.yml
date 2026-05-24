@@ -1,0 +1,70 @@
+# =============================================================================
+# VFSOC infrastructure (PostgreSQL + OpenSearch + OpenSearch Dashboards)
+# -----------------------------------------------------------------------------
+# Application services (Ingestion WPF, SIEM, Admin, log gen, ML) run on the
+# host so that you can develop and debug them with normal tools.
+# =============================================================================
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: vfsoc-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin@123
+      POSTGRES_DB: vfsoc
+    ports:
+      - "5432:5432"
+    volumes:
+      - vfsoc_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vfsoc"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    container_name: vfsoc-opensearch
+    environment:
+      - cluster.name=vfsoc-cluster
+      - node.name=vfsoc-node
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - "DISABLE_INSTALL_DEMO_CONFIG=true"
+      - "DISABLE_SECURITY_PLUGIN=true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - vfsoc_osdata:/usr/share/opensearch/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.11.0
+    container_name: vfsoc-opensearch-dashboards
+    environment:
+      - 'OPENSEARCH_HOSTS=["http://opensearch:9200"]'
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  vfsoc_pgdata:
+  vfsoc_osdata:

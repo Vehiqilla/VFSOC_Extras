@@ -1,0 +1,80 @@
+{
+  "_comment": "VFSOC unified configuration. All scripts in /scripts read this file. Edit values here to change ports/credentials across all services.",
+  "version": "2.0.0",
+  "services": {
+    "main_dashboard": {
+      "name": "VFSOC Main Dashboard",
+      "url": "http://localhost:3000",
+      "port": 3000,
+      "path": "VFSOC-SIEM"
+    },
+    "admin_dashboard": {
+      "name": "VFSOC Admin",
+      "url": "http://localhost:3001",
+      "port": 3001,
+      "path": "VFSOC-Admin"
+    },
+    "ingestion": {
+      "name": "VFSOC Ingestion",
+      "path": "VFSOC-Ingestion",
+      "wpf_exe": "src/VFSOC.Ingestion.Client/bin/Debug/net8.0-windows/VFSOC.Ingestion.Client.exe",
+      "wpf_project": "src/VFSOC.Ingestion.Client/VFSOC.Ingestion.Client.csproj"
+    },
+    "log_generation_api": {
+      "url": "http://localhost:8001",
+      "port": 8001,
+      "path": "VFSOC-log_generation",
+      "entry": "run_api.py"
+    },
+    "ml_inference": {
+      "url": "http://localhost:5000",
+      "port": 5000,
+      "path": "VFSOC-ML-Models",
+      "entry": "model_inference_service.py"
+    },
+    "opensearch": {
+      "url": "http://localhost:9200",
+      "port": 9200,
+      "dashboards_url": "http://localhost:5601",
+      "dashboards_port": 5601
+    },
+    "postgres": {
+      "host": "localhost",
+      "port": 5432,
+      "database": "vfsoc",
+      "user": "postgres",
+      "password": "admin@123"
+    }
+  },
+  "auth": {
+    "jwt_secret": "vfsoc-jwt-secret-2024-CHANGE-IN-PRODUCTION-this-is-shared-across-siem-and-admin",
+    "jwt_expiry_hours": 24,
+    "default_admin_username": "admin",
+    "default_admin_password": "admin@123",
+    "default_admin_email": "admin@vfsoc.com"
+  },
+  "shortcuts": {
+    "create_on_desktop": true,
+    "create_in_start_menu": false,
+    "items": [
+      {
+        "name": "VFSOC Ingestion",
+        "target": "ingestion",
+        "icon": "ingestion.ico",
+        "description": "VFSOC Ingestion Dashboard \u2013 manage connectors and data flow"
+      },
+      {
+        "name": "VFSOC Main Dashboard",
+        "target": "main_dashboard",
+        "icon": "main.ico",
+        "description": "VFSOC Main Dashboard \u2013 alerts, fleet overview, and investigations"
+      },
+      {
+        "name": "VFSOC Admin",
+        "target": "admin_dashboard",
+        "icon": "admin.ico",
+        "description": "VFSOC Admin \u2013 users, mobility assets, and asset\u2013connector links"
+      }
+    ]
+  }
+}
