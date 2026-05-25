@@ -236,32 +236,39 @@ INSERT INTO users (id, username, email, password_hash, role, org_id) VALUES
      'viewer', '550e8400-e29b-41d4-a716-446655440000')
 ON CONFLICT (username) DO NOTHING;
 
--- Seed a default fleet
-INSERT INTO fleets (id, name, description, org_id) VALUES
-    ('770e8400-e29b-41d4-a716-446655440000', 'Default Fleet',
-     'Default fleet grouping for newly registered assets.',
-     '550e8400-e29b-41d4-a716-446655440000')
-ON CONFLICT (name, org_id) DO NOTHING;
-
--- Seed canonical connector types
+-- Seed canonical 9 connectors. These names/types are the single source of
+-- truth used everywhere (VFSOC_Admin, VFSOC-SIEM, VFSOC-Ingestion,
+-- VFSOC-ML-Models, and the asset_connector_links demo seed). On conflict
+-- we update the type/description so re-running this schema corrects any
+-- drift from prior installs.
 INSERT INTO connectors (name, connector_type, description, org_id) VALUES
-    ('AWS CloudWatch', 'aws', 'AWS CloudWatch and CloudTrail data source',
+    ('AWS CloudWatch', 'aws_cloudwatch',
+     'AWS CloudWatch, CloudTrail, and VPC flow log source for cloud assets',
      '550e8400-e29b-41d4-a716-446655440000'),
-    ('EV Charging', 'ev', 'Electric vehicle charging station telemetry',
+    ('Vehicle Telematics', 'vehicle_telematics',
+     'Connected vehicle telematics, GPS, CAN bus, and TCU events',
      '550e8400-e29b-41d4-a716-446655440000'),
-    ('Vehicle Telematics', 'vehicletelematics',
-     'Connected vehicle telematics and GPS data',
+    ('Tesla ADAS', 'tesla_adas',
+     'Tesla Autopilot / FSD advanced driver assistance telemetry',
      '550e8400-e29b-41d4-a716-446655440000'),
-    ('Roadside Sensor', 'roadsidesensor',
-     'Roadside infrastructure sensor data',
+    ('EV Charging Station', 'ev_charging_station',
+     'OCPP charging session, payment and authentication events',
      '550e8400-e29b-41d4-a716-446655440000'),
-    ('Endpoint Detection', 'edr',
-     'Endpoint detection and response for onboard devices',
+    ('Vertiports Management', 'vertiports',
+     'Vertiport / drone / VTOL operations, flight plans and pad control',
      '550e8400-e29b-41d4-a716-446655440000'),
-    ('In-Vehicle Payment', 'invehiclepayment',
-     'In-vehicle payment system events',
+    ('Endpoint Detection', 'endpoint_detection',
+     'EDR + MDM signals from fleet laptops, tablets, mobile devices',
      '550e8400-e29b-41d4-a716-446655440000'),
-    ('Physical Security', 'physicalsecurity',
-     'Depot and gate physical security events',
+    ('In-Vehicle Payment', 'in_vehicle_payment',
+     'In-vehicle and charger payment processing events',
+     '550e8400-e29b-41d4-a716-446655440000'),
+    ('Physical Security', 'physical_security',
+     'Depot gates, biometric access, perimeter cameras and badge readers',
+     '550e8400-e29b-41d4-a716-446655440000'),
+    ('Roadside Sensor', 'roadside_sensor',
+     'Roadside units, V2X, traffic and environmental sensors',
      '550e8400-e29b-41d4-a716-446655440000')
-ON CONFLICT (name, org_id) DO NOTHING;
+ON CONFLICT (name, org_id) DO UPDATE
+    SET connector_type = EXCLUDED.connector_type,
+        description    = EXCLUDED.description;
