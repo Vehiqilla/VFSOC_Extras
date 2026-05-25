@@ -127,8 +127,14 @@ Or the underlying scripts directly:
 ```powershell
 .\scripts\setup-vfsoc.ps1         # env files, npm install, build
 .\scripts\apply-schema.ps1        # schema + canonical seed data
+.\scripts\Build-Icons.ps1         # branded Vehiqilla .ico files (auto-run by next step)
 .\scripts\Install-Shortcuts.ps1   # the three desktop shortcuts
 ```
+
+> `Install-Shortcuts.ps1` automatically calls `Build-Icons.ps1` the first
+> time so the shortcuts ship with branded icons (Vehiqilla logo on a
+> color-tinted background per app). Re-run `Build-Icons.ps1` any time
+> `VFSOC-SIEM/public/logo.png` changes to refresh them.
 
 ### 4.1 What the `.env.local` files contain
 
@@ -230,11 +236,11 @@ cd C:\Users\$env:USERNAME\Desktop\VFSOC\VFSOC_Extras
 powershell -ExecutionPolicy Bypass -File .\scripts\Install-Shortcuts.ps1
 ```
 
-| Shortcut name | Target | What happens when you double-click |
-|---------------|--------|-------------------------------------|
-| **VFSOC Ingestion** | `scripts\launchers\VFSOC-Ingestion.bat` → `VFSOC.Ingestion.WPF.exe` | Launches the WPF ingestion control app. Builds Release first if the binary is missing. |
-| **VFSOC Main Dashboard** | `scripts\launchers\VFSOC-Main-Dashboard.bat` | Starts SIEM (`npm run dev`) if not running, waits for `http://localhost:3000`, then opens it in the default browser. |
-| **VFSOC Admin** | `scripts\launchers\VFSOC-Admin.bat` | Starts Admin (`npm run dev`) if not running, waits for `http://localhost:3001`, then opens it in the default browser. |
+| Shortcut name | Icon | Target | What happens when you double-click |
+|---------------|------|--------|-------------------------------------|
+| **VFSOC Ingestion** | Vehiqilla on amber/orange | `scripts\launchers\open-ingestion.bat` → `VFSOC.Ingestion.Client.exe` | Launches the WPF ingestion control app. Builds Release first if the binary is missing. |
+| **VFSOC Main Dashboard** | Vehiqilla on teal/cyan | `scripts\launchers\open-main-dashboard.bat` | Starts SIEM (`npm run dev`) if not running, polls `http://localhost:3000` until it returns HTTP 200 (up to 120s), then opens it in the default browser. |
+| **VFSOC Admin** | Vehiqilla on deep navy | `scripts\launchers\open-admin-dashboard.bat` | Starts Admin (`npm run dev`) if not running, polls `http://localhost:3001` until it returns HTTP 200 (up to 120s), then opens it in the default browser. |
 
 > The first launch of either dashboard takes ~20 seconds (Next.js compiles on
 > demand). Subsequent launches are immediate because the dev server stays

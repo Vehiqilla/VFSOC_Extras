@@ -185,23 +185,31 @@ Write-VfsocBanner "Installing VFSOC desktop shortcuts"
 Write-Host ("  Extras root   : {0}" -f $extrasRoot) -ForegroundColor DarkGray
 Write-Host ("  Projects root : {0}" -f $projectsRoot) -ForegroundColor DarkGray
 
-# Icon for browser-based shortcuts: use the default Windows browser icon via
-# IconLocation %SystemRoot%\System32\SHELL32.dll,<index>.
-$iconBrowser  = "$env:SystemRoot\System32\SHELL32.dll,14"
-$iconDesktop  = "$env:SystemRoot\System32\SHELL32.dll,15"
-$iconAdmin    = "$env:SystemRoot\System32\SHELL32.dll,165"
+# Branded Vehiqilla icons per app. Auto-build them once if the icons folder
+# is empty so a fresh install gets pretty shortcuts without an extra step.
+$iconDir = Join-Path $extrasRoot 'assets\icons'
+$iconIngestion = Join-Path $iconDir 'vfsoc-ingestion.ico'
+$iconMain      = Join-Path $iconDir 'vfsoc-main.ico'
+$iconAdmin     = Join-Path $iconDir 'vfsoc-admin.ico'
+$missingIcons  = -not (Test-Path $iconIngestion) -or
+                 -not (Test-Path $iconMain)      -or
+                 -not (Test-Path $iconAdmin)
+if ($missingIcons) {
+    Write-Host "  Building Vehiqilla-branded shortcut icons..." -ForegroundColor DarkGray
+    & (Join-Path $PSScriptRoot 'Build-Icons.ps1')
+}
 
 New-VfsocShortcut -Name 'VFSOC Ingestion' `
                   -Target "$env:ComSpec" `
                   -ArgumentString "/c `"$ingestionBat`"" `
                   -Description 'VFSOC Ingestion - connectors and data flow' `
-                  -IconLocation $iconDesktop
+                  -IconLocation $iconIngestion
 
 New-VfsocShortcut -Name 'VFSOC Main Dashboard' `
                   -Target "$env:ComSpec" `
                   -ArgumentString "/c `"$mainBat`"" `
                   -Description 'VFSOC Main Dashboard - alerts, fleet overview, investigations' `
-                  -IconLocation $iconBrowser
+                  -IconLocation $iconMain
 
 New-VfsocShortcut -Name 'VFSOC Admin' `
                   -Target "$env:ComSpec" `
