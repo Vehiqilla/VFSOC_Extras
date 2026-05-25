@@ -141,3 +141,10 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# VFSOC: generated absolute-path launcher batch files (per-machine; produced
+# by VFSOC_Extras\install-shortcuts.cmd).
+scripts/launchers/
+
+# VFSOC: temporary commit message buffers
+.git/COMMITMSG.tmp

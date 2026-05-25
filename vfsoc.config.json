@@ -1,6 +1,7 @@
 {
   "_comment": "VFSOC unified configuration. All scripts in /scripts read this file. Edit values here to change ports/credentials across all services.",
-  "version": "2.0.0",
+  "version": "2.1.0",
+  "projects_root": "..",
   "services": {
     "main_dashboard": {
       "name": "VFSOC Main Dashboard",
@@ -12,12 +13,13 @@
       "name": "VFSOC Admin",
       "url": "http://localhost:3001",
       "port": 3001,
-      "path": "VFSOC-Admin"
+      "path": "VFSOC_Admin"
     },
     "ingestion": {
       "name": "VFSOC Ingestion",
       "path": "VFSOC-Ingestion",
-      "wpf_exe": "src/VFSOC.Ingestion.Client/bin/Debug/net8.0-windows/VFSOC.Ingestion.Client.exe",
+      "wpf_exe_debug": "src/VFSOC.Ingestion.Client/bin/Debug/net8.0-windows/VFSOC.Ingestion.Client.exe",
+      "wpf_exe_release": "src/VFSOC.Ingestion.Client/bin/Release/net8.0-windows/VFSOC.Ingestion.Client.exe",
       "wpf_project": "src/VFSOC.Ingestion.Client/VFSOC.Ingestion.Client.csproj"
     },
     "log_generation_api": {
@@ -43,15 +45,13 @@
       "port": 5432,
       "database": "vfsoc",
       "user": "postgres",
-      "password": "admin@123"
+      "password": "postgres"
     }
   },
   "auth": {
-    "jwt_secret": "vfsoc-jwt-secret-2024-CHANGE-IN-PRODUCTION-this-is-shared-across-siem-and-admin",
-    "jwt_expiry_hours": 24,
-    "default_admin_username": "admin",
-    "default_admin_password": "admin@123",
-    "default_admin_email": "admin@vfsoc.com"
+    "jwt_secret": "vfsoc-jwt-secret-2024-ultra-secure-key-change-in-production",
+    "pepper_key": "vfsoc-pepper-2024-super-secret-pepper-key-change-in-production",
+    "jwt_expiry_hours": 24
   },
   "shortcuts": {
     "create_on_desktop": true,

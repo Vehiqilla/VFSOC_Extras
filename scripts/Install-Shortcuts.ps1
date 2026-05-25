@@ -20,53 +20,79 @@ param(
 
 . "$PSScriptRoot\lib\Common.ps1"
 
-$root = Get-VfsocRoot
+$extrasRoot = Get-VfsocRoot
+$projectsRoot = Get-VfsocProjectsRoot
 $config = Get-VfsocConfig
 $desktop = [Environment]::GetFolderPath('Desktop')
 
 # Helper batch scripts that the shortcuts call into. Storing them in
 # scripts\launchers keeps everything inside the repo and self-contained.
-$launcherDir = Join-Path $root 'scripts\launchers'
+$launcherDir = Join-Path $extrasRoot 'scripts\launchers'
 if (-not (Test-Path $launcherDir)) { New-Item -ItemType Directory -Path $launcherDir | Out-Null }
+
+# Resolve concrete paths from the config so the .bat files don't need to
+# parse JSON at launch time.
+$projectsRootEsc = $projectsRoot.TrimEnd('\')
+$siemPath        = Join-Path $projectsRootEsc $config.services.main_dashboard.path
+$adminPath       = Join-Path $projectsRootEsc $config.services.admin_dashboard.path
+$ingestionPath   = Join-Path $projectsRootEsc $config.services.ingestion.path
+$ingestionExeDbg = Join-Path $ingestionPath ($config.services.ingestion.wpf_exe_debug -replace '/', '\')
+$ingestionExeRel = Join-Path $ingestionPath ($config.services.ingestion.wpf_exe_release -replace '/', '\')
+$ingestionProj   = Join-Path $ingestionPath ($config.services.ingestion.wpf_project -replace '/', '\')
+$mainUrl         = $config.services.main_dashboard.url
+$mainPort        = $config.services.main_dashboard.port
+$adminUrl        = $config.services.admin_dashboard.url
+$adminPort       = $config.services.admin_dashboard.port
 
 # -----------------------------------------------------------------------------
 # Per-shortcut helper batch scripts
 # -----------------------------------------------------------------------------
 $ingestionBat = Join-Path $launcherDir 'open-ingestion.bat'
-@'
+@"
 @echo off
 REM Launches the VFSOC Ingestion WPF client.
 setlocal
-set ROOT=%~dp0..\..
-set EXE=%ROOT%\VFSOC-Ingestion\src\VFSOC.Ingestion.Client\bin\Debug\net8.0-windows\VFSOC.Ingestion.Client.exe
+set EXE_REL=$ingestionExeRel
+set EXE_DBG=$ingestionExeDbg
+set PROJ=$ingestionProj
 
-if not exist "%EXE%" (
-    echo Building VFSOC-Ingestion for the first time...
-    pushd "%ROOT%\VFSOC-Ingestion\src\VFSOC.Ingestion.Client"
-    dotnet build -c Debug
-    popd
+if exist "%EXE_REL%" (
+    start "" "%EXE_REL%"
+    endlocal & exit /b 0
 )
 
-if not exist "%EXE%" (
-    echo Ingestion executable still not found.  Run scripts\setup-vfsoc.ps1 from the VFSOC root.
+if exist "%EXE_DBG%" (
+    start "" "%EXE_DBG%"
+    endlocal & exit /b 0
+)
+
+echo Building VFSOC-Ingestion for the first time...
+pushd "$ingestionPath"
+dotnet build -c Release "%PROJ%"
+popd
+
+if exist "%EXE_REL%" (
+    start "" "%EXE_REL%"
+) else if exist "%EXE_DBG%" (
+    start "" "%EXE_DBG%"
+) else (
+    echo Ingestion executable still not found. Run VFSOC_Extras\setup.cmd from a developer console.
     pause
     exit /b 1
 )
-
-start "" "%EXE%"
 endlocal
-'@ | Set-Content -Path $ingestionBat -Encoding ASCII
+"@ | Set-Content -Path $ingestionBat -Encoding ASCII
 
 $mainBat = Join-Path $launcherDir 'open-main-dashboard.bat'
 @"
 @echo off
 REM Opens VFSOC Main Dashboard, starting the Next.js dev server if needed.
 setlocal
-set ROOT=%~dp0..\..
-set URL=$($config.services.main_dashboard.url)
-set PORT=$($config.services.main_dashboard.port)
+set APP_DIR=$siemPath
+set URL=$mainUrl
+set PORT=$mainPort
 
-powershell -NoProfile -Command "if (-not (Test-NetConnection -ComputerName localhost -Port %PORT% -InformationLevel Quiet)) { Start-Process cmd -ArgumentList '/k','cd /d %ROOT%\VFSOC-SIEM && npm run dev'; Start-Sleep -Seconds 8 }"
+powershell -NoProfile -Command "if (-not (Test-NetConnection -ComputerName localhost -Port %PORT% -InformationLevel Quiet)) { Start-Process cmd -ArgumentList '/k','cd /d %APP_DIR% && npm run dev'; Start-Sleep -Seconds 8 }"
 start "" "%URL%"
 endlocal
 "@ | Set-Content -Path $mainBat -Encoding ASCII
@@ -76,11 +102,11 @@ $adminBat = Join-Path $launcherDir 'open-admin-dashboard.bat'
 @echo off
 REM Opens VFSOC Admin Dashboard, starting the Next.js dev server if needed.
 setlocal
-set ROOT=%~dp0..\..
-set URL=$($config.services.admin_dashboard.url)
-set PORT=$($config.services.admin_dashboard.port)
+set APP_DIR=$adminPath
+set URL=$adminUrl
+set PORT=$adminPort
 
-powershell -NoProfile -Command "if (-not (Test-NetConnection -ComputerName localhost -Port %PORT% -InformationLevel Quiet)) { Start-Process cmd -ArgumentList '/k','cd /d %ROOT%\VFSOC-Admin && npm run dev'; Start-Sleep -Seconds 8 }"
+powershell -NoProfile -Command "if (-not (Test-NetConnection -ComputerName localhost -Port %PORT% -InformationLevel Quiet)) { Start-Process cmd -ArgumentList '/k','cd /d %APP_DIR% && npm run dev'; Start-Sleep -Seconds 8 }"
 start "" "%URL%"
 endlocal
 "@ | Set-Content -Path $adminBat -Encoding ASCII
@@ -94,7 +120,7 @@ function New-VfsocShortcut {
     param(
         [string]$Name,
         [string]$Target,
-        [string]$Args,
+        [string]$ArgumentString,
         [string]$Description,
         [string]$IconLocation
     )
@@ -105,7 +131,7 @@ function New-VfsocShortcut {
     }
     $sc = $shell.CreateShortcut($path)
     $sc.TargetPath = $Target
-    $sc.Arguments = $Args
+    $sc.Arguments = $ArgumentString
     $sc.WorkingDirectory = Split-Path $Target
     $sc.Description = $Description
     if ($IconLocation) { $sc.IconLocation = $IconLocation }
@@ -127,6 +153,8 @@ if ($Remove) {
 }
 
 Write-VfsocBanner "Installing VFSOC desktop shortcuts"
+Write-Host ("  Extras root   : {0}" -f $extrasRoot) -ForegroundColor DarkGray
+Write-Host ("  Projects root : {0}" -f $projectsRoot) -ForegroundColor DarkGray
 
 # Icon for browser-based shortcuts: use the default Windows browser icon via
 # IconLocation %SystemRoot%\System32\SHELL32.dll,<index>.
@@ -136,19 +164,19 @@ $iconAdmin    = "$env:SystemRoot\System32\SHELL32.dll,165"
 
 New-VfsocShortcut -Name 'VFSOC Ingestion' `
                   -Target "$env:ComSpec" `
-                  -Args  "/c `"$ingestionBat`"" `
+                  -ArgumentString "/c `"$ingestionBat`"" `
                   -Description 'VFSOC Ingestion - connectors and data flow' `
                   -IconLocation $iconDesktop
 
 New-VfsocShortcut -Name 'VFSOC Main Dashboard' `
                   -Target "$env:ComSpec" `
-                  -Args  "/c `"$mainBat`"" `
+                  -ArgumentString "/c `"$mainBat`"" `
                   -Description 'VFSOC Main Dashboard - alerts, fleet overview, investigations' `
                   -IconLocation $iconBrowser
 
 New-VfsocShortcut -Name 'VFSOC Admin' `
                   -Target "$env:ComSpec" `
-                  -Args  "/c `"$adminBat`"" `
+                  -ArgumentString "/c `"$adminBat`"" `
                   -Description 'VFSOC Admin - users, mobility assets, asset-connector links' `
                   -IconLocation $iconAdmin
 

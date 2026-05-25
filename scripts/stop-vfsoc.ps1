@@ -11,8 +11,8 @@ param(
 
 . "$PSScriptRoot\lib\Common.ps1"
 
-$root = Get-VfsocRoot
-$config = Get-VfsocConfig
+$extrasRoot = Get-VfsocRoot
+$config     = Get-VfsocConfig
 
 Write-VfsocBanner "Stopping VFSOC"
 
@@ -41,7 +41,7 @@ try {
 
 if (-not $KeepInfra -and (Test-Command 'docker')) {
     Write-VfsocStep "Stopping Docker infra ..."
-    $compose = Join-Path $root 'scripts\lib\docker-compose.infra.yml'
+    $compose = Join-Path $extrasRoot 'scripts\lib\docker-compose.infra.yml'
     try {
         docker compose -f $compose -p vfsoc down | Out-Host
         Write-VfsocOk "Docker infra stopped."

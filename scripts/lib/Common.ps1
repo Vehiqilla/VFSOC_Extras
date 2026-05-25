@@ -6,7 +6,8 @@
 $ErrorActionPreference = 'Stop'
 
 function Get-VfsocRoot {
-    # The repository root sits one level above /scripts.
+    # The "Extras" root (where vfsoc.config.json and /scripts live).
+    # $PSScriptRoot for this file = VFSOC_Extras\scripts\lib, so go up 2.
     return (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 }
 
@@ -17,6 +18,24 @@ function Get-VfsocConfig {
         throw "vfsoc.config.json not found at $configPath"
     }
     return (Get-Content $configPath -Raw | ConvertFrom-Json)
+}
+
+function Get-VfsocProjectsRoot {
+    # The folder that holds the app projects (VFSOC-SIEM, VFSOC_Admin,
+    # VFSOC-Ingestion, etc.). Configurable via "projects_root" in
+    # vfsoc.config.json; defaults to the parent of VFSOC_Extras.
+    $extrasRoot = Get-VfsocRoot
+    try {
+        $cfg = Get-VfsocConfig
+        if ($cfg.PSObject.Properties.Name -contains 'projects_root' -and $cfg.projects_root) {
+            $candidate = $cfg.projects_root
+            if (-not [System.IO.Path]::IsPathRooted($candidate)) {
+                $candidate = Join-Path $extrasRoot $candidate
+            }
+            return (Resolve-Path $candidate).Path
+        }
+    } catch { }
+    return (Resolve-Path (Join-Path $extrasRoot '..')).Path
 }
 
 function Write-VfsocBanner($title) {

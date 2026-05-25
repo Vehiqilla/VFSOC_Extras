@@ -12,7 +12,7 @@ services:
     container_name: vfsoc-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: admin@123
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: vfsoc
     ports:
       - "5432:5432"

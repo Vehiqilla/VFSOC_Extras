@@ -21,10 +21,13 @@ param(
 
 . "$PSScriptRoot\lib\Common.ps1"
 
-$root = Get-VfsocRoot
-$config = Get-VfsocConfig
+$extrasRoot   = Get-VfsocRoot
+$projectsRoot = Get-VfsocProjectsRoot
+$config       = Get-VfsocConfig
 
 Write-VfsocBanner "Setup"
+Write-Host ("  Extras root   : {0}" -f $extrasRoot) -ForegroundColor DarkGray
+Write-Host ("  Projects root : {0}" -f $projectsRoot) -ForegroundColor DarkGray
 
 # ---------------------------------------------------------------------------
 # 1. Prerequisites
@@ -51,9 +54,10 @@ if ($missing.Count -gt 0) {
 # ---------------------------------------------------------------------------
 Write-VfsocStep "Writing per-project environment files ..."
 
-$pg = $config.services.postgres
-$jwt = $config.auth.jwt_secret
-$mainUrl = $config.services.main_dashboard.url
+$pg       = $config.services.postgres
+$jwt      = $config.auth.jwt_secret
+$pepper   = $config.auth.pepper_key
+$mainUrl  = $config.services.main_dashboard.url
 $adminUrl = $config.services.admin_dashboard.url
 
 $siemEnv = @"
@@ -63,11 +67,12 @@ DB_NAME=$($pg.database)
 DB_PASSWORD=$($pg.password)
 DB_PORT=$($pg.port)
 JWT_SECRET=$jwt
+PEPPER_KEY=$pepper
 OPENSEARCH_URL=$($config.services.opensearch.url)
 NODE_ENV=development
 NEXT_PUBLIC_ADMIN_DASHBOARD_URL=$adminUrl
 "@
-$siemEnvPath = Join-Path $root 'VFSOC-SIEM\.env.local'
+$siemEnvPath = Join-Path $projectsRoot ($config.services.main_dashboard.path + '\.env.local')
 Set-Content -Path $siemEnvPath -Value $siemEnv -Encoding UTF8
 Write-VfsocOk "Wrote $siemEnvPath"
 
@@ -78,10 +83,11 @@ DB_NAME=$($pg.database)
 DB_PASSWORD=$($pg.password)
 DB_PORT=$($pg.port)
 JWT_SECRET=$jwt
+PEPPER_KEY=$pepper
 NODE_ENV=development
 NEXT_PUBLIC_MAIN_DASHBOARD_URL=$mainUrl
 "@
-$adminEnvPath = Join-Path $root 'VFSOC-Admin\.env.local'
+$adminEnvPath = Join-Path $projectsRoot ($config.services.admin_dashboard.path + '\.env.local')
 Set-Content -Path $adminEnvPath -Value $adminEnv -Encoding UTF8
 Write-VfsocOk "Wrote $adminEnvPath"
 
@@ -90,7 +96,7 @@ Write-VfsocOk "Wrote $adminEnvPath"
 # ---------------------------------------------------------------------------
 if (-not $SkipDocker -and (Test-Command 'docker')) {
     Write-VfsocStep "Starting PostgreSQL and OpenSearch in Docker ..."
-    $composePath = Join-Path $root 'scripts\lib\docker-compose.infra.yml'
+    $composePath = Join-Path $extrasRoot 'scripts\lib\docker-compose.infra.yml'
     if (-not (Test-Path $composePath)) {
         Write-VfsocErr "Missing $composePath"
     } else {
@@ -110,10 +116,12 @@ if (-not $SkipDocker -and (Test-Command 'docker')) {
     else { Write-VfsocWarn "PostgreSQL is not responding yet; schema apply may fail. Re-run setup later." }
 
     # Apply schema (idempotent via IF NOT EXISTS / ON CONFLICT).
-    $schemaPath = Join-Path $root 'scripts\lib\db-schema.sql'
+    $schemaPath = Join-Path $extrasRoot 'scripts\lib\db-schema.sql'
     Write-VfsocStep "Applying unified database schema ..."
     try {
-        Get-Content $schemaPath -Raw | docker exec -i vfsoc-postgres psql -U $pg.user -d $pg.database 2>&1 | Out-Host
+        $container = (docker ps --filter "name=postgres" --format '{{.Names}}' | Select-Object -First 1)
+        if (-not $container) { $container = 'vfsoc-postgres' }
+        Get-Content $schemaPath -Raw | docker exec -i -e "PGPASSWORD=$($pg.password)" $container psql -U $pg.user -d $pg.database 2>&1 | Out-Host
         Write-VfsocOk "Schema applied to database '$($pg.database)'."
     } catch {
         Write-VfsocWarn "Schema apply failed; you can re-run later with: scripts\apply-schema.ps1"
@@ -128,8 +136,8 @@ if (-not $SkipDocker -and (Test-Command 'docker')) {
 # 4. Node dependencies
 # ---------------------------------------------------------------------------
 if (-not $SkipNode -and (Test-Command 'npm')) {
-    foreach ($app in @('VFSOC-SIEM', 'VFSOC-Admin')) {
-        $dir = Join-Path $root $app
+    foreach ($app in @($config.services.main_dashboard.path, $config.services.admin_dashboard.path)) {
+        $dir = Join-Path $projectsRoot $app
         Write-VfsocStep "npm install in $app ..."
         Push-Location $dir
         try {
@@ -149,8 +157,8 @@ if (-not $SkipNode -and (Test-Command 'npm')) {
 # 5. Python dependencies
 # ---------------------------------------------------------------------------
 if (-not $SkipPython -and (Test-Command 'python')) {
-    foreach ($pyProj in @('VFSOC-log_generation', 'VFSOC-ML-Models')) {
-        $dir = Join-Path $root $pyProj
+    foreach ($pyProj in @($config.services.log_generation_api.path, $config.services.ml_inference.path)) {
+        $dir = Join-Path $projectsRoot $pyProj
         $req = Join-Path $dir 'requirements.txt'
         if (-not (Test-Path $req)) { continue }
         Write-VfsocStep "pip install in $pyProj ..."
@@ -175,11 +183,11 @@ if (-not $SkipPython -and (Test-Command 'python')) {
 # ---------------------------------------------------------------------------
 if (-not $SkipDotnet -and (Test-Command 'dotnet')) {
     Write-VfsocStep "dotnet build VFSOC-Ingestion ..."
-    $csproj = Join-Path $root 'VFSOC-Ingestion\src\VFSOC.Ingestion.Client\VFSOC.Ingestion.Client.csproj'
+    $csproj = Join-Path $projectsRoot ($config.services.ingestion.path + '\' + ($config.services.ingestion.wpf_project -replace '/', '\'))
     if (Test-Path $csproj) {
         try {
-            dotnet build $csproj -c Debug | Out-Host
-            Write-VfsocOk "VFSOC-Ingestion built."
+            dotnet build $csproj -c Release | Out-Host
+            Write-VfsocOk "VFSOC-Ingestion built (Release)."
         } catch {
             Write-VfsocErr "dotnet build failed: $($_.Exception.Message)"
         }
@@ -195,9 +203,5 @@ Write-Host "Next steps:" -ForegroundColor White
 Write-Host "  1. Install desktop shortcuts:  scripts\Install-Shortcuts.ps1" -ForegroundColor Gray
 Write-Host "  2. Start everything:           scripts\start-vfsoc.ps1" -ForegroundColor Gray
 Write-Host ''
-Write-Host "Default credentials:" -ForegroundColor White
-Write-Host "  admin / admin@123       (full admin)" -ForegroundColor Gray
-Write-Host "  operator / analyst@123  (asset/connector management)" -ForegroundColor Gray
-Write-Host "  viewer / analyst@123    (read-only admin)" -ForegroundColor Gray
-Write-Host "  analyst / analyst@123   (SIEM analyst)" -ForegroundColor Gray
+Write-Host "Sign-in credentials are documented in VFSOC_Admin\README.md and VFSOC-SIEM\README.md." -ForegroundColor Gray
 Write-Host ''

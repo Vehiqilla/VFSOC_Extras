@@ -6,16 +6,31 @@ aviation, rail, transit, marine, EV chargers, sensors, depots and more),
 runs rule-based and AI-based detection, and surfaces alerts and indicators
 of compromise (IoCs) on a security dashboard.
 
-This repository contains **five projects** plus a root-level orchestrator:
+`VFSOC_Extras` is the **orchestrator repo**. The five application repos
+(`VFSOC-Ingestion`, `VFSOC-SIEM`, `VFSOC_Admin`, `VFSOC-log_generation`,
+`VFSOC-ML-Models`) live as **siblings** to this folder:
+
+```
+<parent>/
+├── VFSOC_Extras/        <- this repo (scripts, config, schema, docs)
+├── VFSOC-Ingestion/     Ingestion WPF client
+├── VFSOC-SIEM/          Main dashboard (Next.js)
+├── VFSOC_Admin/         Admin dashboard (Next.js)
+├── VFSOC-log_generation/ Mock connector data API (FastAPI)
+└── VFSOC-ML-Models/     ML inference service (Flask)
+```
 
 | Folder | Role | Stack |
 |--------|------|-------|
 | `VFSOC-Ingestion`       | **Ingestion dashboard** – manage connectors and data flow | WPF (.NET 8) |
 | `VFSOC-SIEM`            | **Main dashboard** – alerts, fleet view, investigations | Next.js 14 |
-| `VFSOC-Admin`           | **Admin dashboard** – users, mobility assets, asset–connector links | Next.js 14 |
+| `VFSOC_Admin`           | **Admin dashboard** – users, mobility assets, asset–connector links | Next.js 14 |
 | `VFSOC-log_generation`  | Mock connector data API | Python / FastAPI |
 | `VFSOC-ML-Models`       | ML inference service | Python / Flask |
-| `scripts/`              | Root orchestrator (setup, start, stop, shortcuts) | PowerShell |
+| `VFSOC_Extras/scripts/` | Orchestrator (setup, start, stop, shortcuts) | PowerShell |
+
+The default `projects_root` in `vfsoc.config.json` is `..` (the parent of
+`VFSOC_Extras`). Override it there if your layout differs.
 
 See **[`docs/GUIDE.md`](docs/GUIDE.md)** for the complete operator guide.
 A short version follows.
@@ -50,45 +65,52 @@ To stop everything: `.\stop.cmd`.
 
 ---
 
-## Default credentials
+## Sign-in roles
 
-| Username | Password | Role | Where |
-|----------|----------|------|-------|
-| `admin` | `admin@123` | admin | All apps (full power) |
-| `operator` | `analyst@123` | operator | Admin (read+write assets/connectors) |
-| `viewer` | `analyst@123` | viewer | Admin (read-only) |
-| `analyst` | `analyst@123` | analyst | Main Dashboard |
+Sign-in is shared across all apps via the unified `users` table. The
+Admin Dashboard lets administrators create, edit, and disable users
+without touching SQL.
 
-Change these immediately in any non-local deployment. The Admin dashboard
-lets you create, edit, and disable users without touching SQL.
+| Role | Where they can sign in |
+|------|------------------------|
+| `admin` | All apps (full power) |
+| `operator` | Admin (read+write assets/connectors) |
+| `viewer` | Admin (read-only) |
+| `analyst` | Main Dashboard (SIEM) |
+
+Initial credentials are provisioned by `setup.cmd` via
+`scripts/lib/db-schema.sql`. **Change them immediately** in any deployment
+outside a local lab. Credentials are intentionally not displayed in the
+sign-in UIs.
 
 ---
 
 ## What's where
 
 ```
-VFSOC/
-├── vfsoc.config.json          <- unified config (ports, creds, paths)
-├── setup.cmd / start.cmd / stop.cmd / install-shortcuts.cmd
-├── docs/
-│   └── GUIDE.md               <- full operator manual
-├── scripts/
-│   ├── setup-vfsoc.ps1
-│   ├── start-vfsoc.ps1
-│   ├── stop-vfsoc.ps1
-│   ├── apply-schema.ps1
-│   ├── Install-Shortcuts.ps1
-│   ├── launchers/             <- helper batch files used by the shortcuts
-│   └── lib/
-│       ├── Common.ps1
-│       ├── db-schema.sql      <- canonical unified schema
-│       └── docker-compose.infra.yml
-├── VFSOC-Admin/               <- new Next.js admin dashboard
-├── VFSOC-SIEM/                <- main security dashboard
-├── VFSOC-Ingestion/           <- WPF ingestion client
-├── VFSOC-log_generation/      <- mock connector data
-├── VFSOC-ML-Models/           <- ML inference service
-└── admin_hld.md
+<parent>/
+├── VFSOC_Extras/                  <- THIS repo (orchestrator)
+│   ├── vfsoc.config.json          <- unified config (ports, creds, paths)
+│   ├── setup.cmd / start.cmd / stop.cmd / install-shortcuts.cmd
+│   ├── admin_hld.md
+│   ├── docs/
+│   │   └── GUIDE.md               <- full operator manual
+│   └── scripts/
+│       ├── setup-vfsoc.ps1
+│       ├── start-vfsoc.ps1
+│       ├── stop-vfsoc.ps1
+│       ├── apply-schema.ps1
+│       ├── Install-Shortcuts.ps1
+│       ├── launchers/             <- helper batch files used by the shortcuts
+│       └── lib/
+│           ├── Common.ps1
+│           ├── db-schema.sql      <- canonical unified schema
+│           └── docker-compose.infra.yml
+├── VFSOC_Admin/                   <- Next.js admin dashboard
+├── VFSOC-SIEM/                    <- main security dashboard
+├── VFSOC-Ingestion/               <- WPF ingestion client
+├── VFSOC-log_generation/          <- mock connector data
+└── VFSOC-ML-Models/               <- ML inference service
 ```
 
 ---
@@ -140,6 +162,6 @@ flowchart LR
 
 - [`docs/GUIDE.md`](docs/GUIDE.md) — complete setup + run + troubleshooting guide
 - [`admin_hld.md`](admin_hld.md) — admin module high-level design
-- [`VFSOC-Admin/README.md`](VFSOC-Admin/README.md) — admin app developer notes
-- [`VFSOC-SIEM/README.md`](VFSOC-SIEM/README.md) — main dashboard developer notes
-- [`VFSOC-Ingestion/README.md`](VFSOC-Ingestion/README.md) — ingestion client developer notes
+- `../VFSOC_Admin/README.md` — admin app developer notes
+- `../VFSOC-SIEM/README.md` — main dashboard developer notes
+- `../VFSOC-Ingestion/README.md` — ingestion client developer notes

@@ -22,12 +22,15 @@ param(
 
 . "$PSScriptRoot\lib\Common.ps1"
 
-$root   = Get-VfsocRoot
-$config = Get-VfsocConfig
-$logs   = Join-Path $root 'logs'
+$extrasRoot   = Get-VfsocRoot
+$projectsRoot = Get-VfsocProjectsRoot
+$config       = Get-VfsocConfig
+$logs         = Join-Path $extrasRoot 'logs'
 if (-not (Test-Path $logs)) { New-Item -ItemType Directory -Path $logs | Out-Null }
 
 Write-VfsocBanner "Starting VFSOC services"
+Write-Host ("  Extras root   : {0}" -f $extrasRoot) -ForegroundColor DarkGray
+Write-Host ("  Projects root : {0}" -f $projectsRoot) -ForegroundColor DarkGray
 
 # ---------------------------------------------------------------------------
 # 1. Docker infra
@@ -35,7 +38,7 @@ Write-VfsocBanner "Starting VFSOC services"
 if (-not $NoInfra) {
     if (Test-Command 'docker') {
         Write-VfsocStep "Starting Docker infra (Postgres, OpenSearch, Dashboards) ..."
-        $compose = Join-Path $root 'scripts\lib\docker-compose.infra.yml'
+        $compose = Join-Path $extrasRoot 'scripts\lib\docker-compose.infra.yml'
         try {
             docker compose -f $compose -p vfsoc up -d | Out-Host
             Write-VfsocOk "Docker infra is up."
@@ -52,7 +55,7 @@ if (-not $NoInfra) {
 # ---------------------------------------------------------------------------
 # 2. Log Generation API (port 8001)
 # ---------------------------------------------------------------------------
-$logGenDir = Join-Path $root $config.services.log_generation_api.path
+$logGenDir = Join-Path $projectsRoot $config.services.log_generation_api.path
 $logGenVenv = Join-Path $logGenDir '.venv\Scripts\python.exe'
 if (Test-Path $logGenVenv) {
     Start-VfsocService -Name 'Log Generation API' `
@@ -67,7 +70,7 @@ if (Test-Path $logGenVenv) {
 # ---------------------------------------------------------------------------
 # 3. ML Inference Service (port 5000)
 # ---------------------------------------------------------------------------
-$mlDir = Join-Path $root $config.services.ml_inference.path
+$mlDir = Join-Path $projectsRoot $config.services.ml_inference.path
 $mlVenv = Join-Path $mlDir '.venv\Scripts\python.exe'
 if (Test-Path $mlVenv) {
     Start-VfsocService -Name 'ML Inference Service' `
@@ -82,7 +85,7 @@ if (Test-Path $mlVenv) {
 # ---------------------------------------------------------------------------
 # 4. VFSOC-SIEM Main Dashboard (port 3000)
 # ---------------------------------------------------------------------------
-$siemDir = Join-Path $root $config.services.main_dashboard.path
+$siemDir = Join-Path $projectsRoot $config.services.main_dashboard.path
 Start-VfsocService -Name 'VFSOC Main Dashboard (SIEM)' `
     -WorkingDirectory $siemDir `
     -Command 'cmd.exe' `
@@ -92,7 +95,7 @@ Start-VfsocService -Name 'VFSOC Main Dashboard (SIEM)' `
 # ---------------------------------------------------------------------------
 # 5. VFSOC-Admin Admin Dashboard (port 3001)
 # ---------------------------------------------------------------------------
-$adminDir = Join-Path $root $config.services.admin_dashboard.path
+$adminDir = Join-Path $projectsRoot $config.services.admin_dashboard.path
 Start-VfsocService -Name 'VFSOC Admin Dashboard' `
     -WorkingDirectory $adminDir `
     -Command 'cmd.exe' `
@@ -103,9 +106,11 @@ Start-VfsocService -Name 'VFSOC Admin Dashboard' `
 # 6. Ingestion WPF
 # ---------------------------------------------------------------------------
 if (-not $NoIngestion) {
-    $ingDir = Join-Path $root $config.services.ingestion.path
-    $exe    = Join-Path $ingDir $config.services.ingestion.wpf_exe
-    if (Test-Path $exe) {
+    $ingDir = Join-Path $projectsRoot $config.services.ingestion.path
+    $exeRel = Join-Path $ingDir ($config.services.ingestion.wpf_exe_release -replace '/', '\')
+    $exeDbg = Join-Path $ingDir ($config.services.ingestion.wpf_exe_debug -replace '/', '\')
+    $exe    = if (Test-Path $exeRel) { $exeRel } elseif (Test-Path $exeDbg) { $exeDbg } else { $null }
+    if ($exe) {
         Write-VfsocStep "Launching Ingestion WPF client ..."
         Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe)
         Write-VfsocOk "Ingestion client launched."
