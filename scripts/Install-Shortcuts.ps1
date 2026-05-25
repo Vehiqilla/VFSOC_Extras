@@ -83,32 +83,61 @@ if exist "%EXE_REL%" (
 endlocal
 "@ | Set-Content -Path $ingestionBat -Encoding ASCII
 
+# Shared helper: ensure the Next.js dev server is up, then open the URL once
+# it responds HTTP 200. Handles cold-start Next.js compilation gracefully.
+$waitPs1 = Join-Path $launcherDir 'WaitForDevServer.ps1'
+@'
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory=$true)][string]$AppDir,
+    [Parameter(Mandatory=$true)][int]$Port,
+    [Parameter(Mandatory=$true)][string]$Url,
+    [int]$TimeoutSeconds = 120
+)
+
+$ErrorActionPreference = 'SilentlyContinue'
+
+$listening = $false
+try {
+    $listening = (Get-NetTCPConnection -State Listen -LocalPort $Port).Count -gt 0
+} catch { $listening = $false }
+
+if (-not $listening) {
+    Write-Host "Starting Next.js dev server in $AppDir ..." -ForegroundColor Cyan
+    Start-Process cmd -ArgumentList "/k","cd /d `"$AppDir`" && npm run dev"
+}
+
+Write-Host "Waiting for $Url ..." -ForegroundColor Cyan
+$ok = $false
+for ($i = 0; $i -lt $TimeoutSeconds; $i++) {
+    try {
+        $r = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 2
+        if ($r.StatusCode -eq 200) { $ok = $true; break }
+    } catch { }
+    Start-Sleep -Seconds 1
+}
+
+if ($ok) {
+    Write-Host "Service ready at $Url" -ForegroundColor Green
+} else {
+    Write-Host "Service did not respond on $Url within $TimeoutSeconds s." -ForegroundColor Yellow
+    Write-Host "Opening URL anyway; reload the page once the dev console shows 'Ready'." -ForegroundColor Yellow
+}
+Start-Process $Url
+'@ | Set-Content -Path $waitPs1 -Encoding ASCII
+
 $mainBat = Join-Path $launcherDir 'open-main-dashboard.bat'
 @"
 @echo off
 REM Opens VFSOC Main Dashboard, starting the Next.js dev server if needed.
-setlocal
-set APP_DIR=$siemPath
-set URL=$mainUrl
-set PORT=$mainPort
-
-powershell -NoProfile -Command "if (-not (Test-NetConnection -ComputerName localhost -Port %PORT% -InformationLevel Quiet)) { Start-Process cmd -ArgumentList '/k','cd /d %APP_DIR% && npm run dev'; Start-Sleep -Seconds 8 }"
-start "" "%URL%"
-endlocal
+powershell -NoProfile -ExecutionPolicy Bypass -File "$waitPs1" -AppDir "$siemPath" -Port $mainPort -Url "$mainUrl"
 "@ | Set-Content -Path $mainBat -Encoding ASCII
 
 $adminBat = Join-Path $launcherDir 'open-admin-dashboard.bat'
 @"
 @echo off
 REM Opens VFSOC Admin Dashboard, starting the Next.js dev server if needed.
-setlocal
-set APP_DIR=$adminPath
-set URL=$adminUrl
-set PORT=$adminPort
-
-powershell -NoProfile -Command "if (-not (Test-NetConnection -ComputerName localhost -Port %PORT% -InformationLevel Quiet)) { Start-Process cmd -ArgumentList '/k','cd /d %APP_DIR% && npm run dev'; Start-Sleep -Seconds 8 }"
-start "" "%URL%"
-endlocal
+powershell -NoProfile -ExecutionPolicy Bypass -File "$waitPs1" -AppDir "$adminPath" -Port $adminPort -Url "$adminUrl"
 "@ | Set-Content -Path $adminBat -Encoding ASCII
 
 # -----------------------------------------------------------------------------
