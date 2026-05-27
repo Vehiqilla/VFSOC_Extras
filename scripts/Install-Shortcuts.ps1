@@ -25,120 +25,24 @@ $projectsRoot = Get-VfsocProjectsRoot
 $config = Get-VfsocConfig
 $desktop = [Environment]::GetFolderPath('Desktop')
 
-# Helper batch scripts that the shortcuts call into. Storing them in
-# scripts\launchers keeps everything inside the repo and self-contained.
-$launcherDir = Join-Path $extrasRoot 'scripts\launchers'
-if (-not (Test-Path $launcherDir)) { New-Item -ItemType Directory -Path $launcherDir | Out-Null }
+# Helper batch + PowerShell scripts the shortcuts call into. These are
+# version-controlled under scripts\launchers and contain all of the logic
+# (Docker bring-up, app start, watchdog cleanup). This install script just
+# verifies they are present.
+$launcherDir   = Join-Path $extrasRoot 'scripts\launchers'
+$ingestionBat  = Join-Path $launcherDir 'open-ingestion.bat'
+$mainBat       = Join-Path $launcherDir 'open-main-dashboard.bat'
+$adminBat      = Join-Path $launcherDir 'open-admin-dashboard.bat'
+$launchPs1     = Join-Path $launcherDir 'VFSOC-Launch.ps1'
+$cleanupPs1    = Join-Path $launcherDir 'VFSOC-Cleanup.ps1'
 
-# Resolve concrete paths from the config so the .bat files don't need to
-# parse JSON at launch time.
-$projectsRootEsc = $projectsRoot.TrimEnd('\')
-$siemPath        = Join-Path $projectsRootEsc $config.services.main_dashboard.path
-$adminPath       = Join-Path $projectsRootEsc $config.services.admin_dashboard.path
-$ingestionPath   = Join-Path $projectsRootEsc $config.services.ingestion.path
-$ingestionExeDbg = Join-Path $ingestionPath ($config.services.ingestion.wpf_exe_debug -replace '/', '\')
-$ingestionExeRel = Join-Path $ingestionPath ($config.services.ingestion.wpf_exe_release -replace '/', '\')
-$ingestionProj   = Join-Path $ingestionPath ($config.services.ingestion.wpf_project -replace '/', '\')
-$mainUrl         = $config.services.main_dashboard.url
-$mainPort        = $config.services.main_dashboard.port
-$adminUrl        = $config.services.admin_dashboard.url
-$adminPort       = $config.services.admin_dashboard.port
-
-# -----------------------------------------------------------------------------
-# Per-shortcut helper batch scripts
-# -----------------------------------------------------------------------------
-$ingestionBat = Join-Path $launcherDir 'open-ingestion.bat'
-@"
-@echo off
-REM Launches the VFSOC Ingestion WPF client.
-setlocal
-set EXE_REL=$ingestionExeRel
-set EXE_DBG=$ingestionExeDbg
-set PROJ=$ingestionProj
-
-if exist "%EXE_REL%" (
-    start "" "%EXE_REL%"
-    endlocal & exit /b 0
-)
-
-if exist "%EXE_DBG%" (
-    start "" "%EXE_DBG%"
-    endlocal & exit /b 0
-)
-
-echo Building VFSOC-Ingestion for the first time...
-pushd "$ingestionPath"
-dotnet build -c Release "%PROJ%"
-popd
-
-if exist "%EXE_REL%" (
-    start "" "%EXE_REL%"
-) else if exist "%EXE_DBG%" (
-    start "" "%EXE_DBG%"
-) else (
-    echo Ingestion executable still not found. Run VFSOC_Extras\setup.cmd from a developer console.
-    pause
-    exit /b 1
-)
-endlocal
-"@ | Set-Content -Path $ingestionBat -Encoding ASCII
-
-# Shared helper: ensure the Next.js dev server is up, then open the URL once
-# it responds HTTP 200. Handles cold-start Next.js compilation gracefully.
-$waitPs1 = Join-Path $launcherDir 'WaitForDevServer.ps1'
-@'
-[CmdletBinding()]
-param(
-    [Parameter(Mandatory=$true)][string]$AppDir,
-    [Parameter(Mandatory=$true)][int]$Port,
-    [Parameter(Mandatory=$true)][string]$Url,
-    [int]$TimeoutSeconds = 120
-)
-
-$ErrorActionPreference = 'SilentlyContinue'
-
-$listening = $false
-try {
-    $listening = (Get-NetTCPConnection -State Listen -LocalPort $Port).Count -gt 0
-} catch { $listening = $false }
-
-if (-not $listening) {
-    Write-Host "Starting Next.js dev server in $AppDir ..." -ForegroundColor Cyan
-    Start-Process cmd -ArgumentList "/k","cd /d `"$AppDir`" && npm run dev"
+foreach ($f in @($launchPs1, $cleanupPs1, $ingestionBat, $mainBat, $adminBat)) {
+    if (-not (Test-Path $f)) {
+        Write-VfsocErr "Launcher file missing: $f"
+        Write-VfsocErr "Restore the launchers folder before installing shortcuts."
+        exit 1
+    }
 }
-
-Write-Host "Waiting for $Url ..." -ForegroundColor Cyan
-$ok = $false
-for ($i = 0; $i -lt $TimeoutSeconds; $i++) {
-    try {
-        $r = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 2
-        if ($r.StatusCode -eq 200) { $ok = $true; break }
-    } catch { }
-    Start-Sleep -Seconds 1
-}
-
-if ($ok) {
-    Write-Host "Service ready at $Url" -ForegroundColor Green
-} else {
-    Write-Host "Service did not respond on $Url within $TimeoutSeconds s." -ForegroundColor Yellow
-    Write-Host "Opening URL anyway; reload the page once the dev console shows 'Ready'." -ForegroundColor Yellow
-}
-Start-Process $Url
-'@ | Set-Content -Path $waitPs1 -Encoding ASCII
-
-$mainBat = Join-Path $launcherDir 'open-main-dashboard.bat'
-@"
-@echo off
-REM Opens VFSOC Main Dashboard, starting the Next.js dev server if needed.
-powershell -NoProfile -ExecutionPolicy Bypass -File "$waitPs1" -AppDir "$siemPath" -Port $mainPort -Url "$mainUrl"
-"@ | Set-Content -Path $mainBat -Encoding ASCII
-
-$adminBat = Join-Path $launcherDir 'open-admin-dashboard.bat'
-@"
-@echo off
-REM Opens VFSOC Admin Dashboard, starting the Next.js dev server if needed.
-powershell -NoProfile -ExecutionPolicy Bypass -File "$waitPs1" -AppDir "$adminPath" -Port $adminPort -Url "$adminUrl"
-"@ | Set-Content -Path $adminBat -Encoding ASCII
 
 # -----------------------------------------------------------------------------
 # Build the shortcuts
@@ -150,6 +54,7 @@ function New-VfsocShortcut {
         [string]$Name,
         [string]$Target,
         [string]$ArgumentString,
+        [string]$WorkingDir,
         [string]$Description,
         [string]$IconLocation
     )
@@ -161,10 +66,10 @@ function New-VfsocShortcut {
     $sc = $shell.CreateShortcut($path)
     $sc.TargetPath = $Target
     $sc.Arguments = $ArgumentString
-    $sc.WorkingDirectory = Split-Path $Target
+    $sc.WorkingDirectory = if ($WorkingDir) { $WorkingDir } else { Split-Path $Target }
     $sc.Description = $Description
     if ($IconLocation) { $sc.IconLocation = $IconLocation }
-    $sc.WindowStyle = 7   # Minimized
+    $sc.WindowStyle = 1   # Normal window so the user sees the launcher output
     $sc.Save()
     Write-VfsocOk "Created shortcut: $path"
 }
@@ -202,18 +107,21 @@ if ($missingIcons) {
 New-VfsocShortcut -Name 'VFSOC Ingestion' `
                   -Target "$env:ComSpec" `
                   -ArgumentString "/c `"$ingestionBat`"" `
+                  -WorkingDir $launcherDir `
                   -Description 'VFSOC Ingestion - connectors and data flow' `
                   -IconLocation $iconIngestion
 
 New-VfsocShortcut -Name 'VFSOC Main Dashboard' `
                   -Target "$env:ComSpec" `
                   -ArgumentString "/c `"$mainBat`"" `
+                  -WorkingDir $launcherDir `
                   -Description 'VFSOC Main Dashboard - alerts, fleet overview, investigations' `
                   -IconLocation $iconMain
 
 New-VfsocShortcut -Name 'VFSOC Admin' `
                   -Target "$env:ComSpec" `
                   -ArgumentString "/c `"$adminBat`"" `
+                  -WorkingDir $launcherDir `
                   -Description 'VFSOC Admin - users, mobility assets, asset-connector links' `
                   -IconLocation $iconAdmin
 

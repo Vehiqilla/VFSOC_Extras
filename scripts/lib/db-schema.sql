@@ -220,8 +220,23 @@ INSERT INTO organizations (id, name, country) VALUES
     ('550e8400-e29b-41d4-a716-446655440001', 'Guest', 'Global')
 ON CONFLICT (name) DO NOTHING;
 
--- Default users (passwords: admin@123, analyst@123)
+-- Default users.
+-- Vehiqilla branded admin accounts (password: V#hiqilla#01) used by the
+-- desktop shortcuts (Ingestion / Main Dashboard / Admin). The hash is a
+-- plain bcrypt hash so it verifies in all three apps:
+--   * VFSOC-Ingestion  : BCrypt.Net.Verify (plain bcrypt)
+--   * VFSOC-SIEM/Admin : peppered bcrypt with plain-bcrypt fallback
+-- Legacy users (admin / analyst / operator / viewer with @vfsoc.com) are
+-- kept for backwards compatibility (passwords: admin@123 / analyst@123).
 INSERT INTO users (id, username, email, password_hash, role, org_id) VALUES
+    ('660e8400-e29b-41d4-a716-446655440010',
+     'admin@vehiqilla.com', 'admin@vehiqilla.com',
+     '$2b$12$Ukx0JWyMiDGt3Hah9ignY.LwvbHW6CSHlcPhKnwfckytJL5la/b.O',
+     'admin', '550e8400-e29b-41d4-a716-446655440000'),
+    ('660e8400-e29b-41d4-a716-446655440011',
+     'ajkhan@vehiqilla.com', 'ajkhan@vehiqilla.com',
+     '$2b$12$Ukx0JWyMiDGt3Hah9ignY.LwvbHW6CSHlcPhKnwfckytJL5la/b.O',
+     'admin', '550e8400-e29b-41d4-a716-446655440000'),
     ('660e8400-e29b-41d4-a716-446655440000', 'admin', 'admin@vfsoc.com',
      '$2b$12$1qLWaXpmPGJqmK6A5dqcZe5mmQkBStEzuNcw6xzgssPrNQoR4Cgaq',
      'admin', '550e8400-e29b-41d4-a716-446655440000'),
@@ -235,6 +250,25 @@ INSERT INTO users (id, username, email, password_hash, role, org_id) VALUES
      '$2b$12$wj5AC1p44ZK6YsC2KWribuz74fYlscT07NE4xsGp8S.YSSMsmidXu',
      'viewer', '550e8400-e29b-41d4-a716-446655440000')
 ON CONFLICT (username) DO NOTHING;
+
+-- Re-assert the Vehiqilla-branded admin accounts. If they already exist
+-- (e.g. from a previous install with a different password) make sure their
+-- credentials and role match the documented defaults.
+UPDATE users
+   SET password_hash = '$2b$12$Ukx0JWyMiDGt3Hah9ignY.LwvbHW6CSHlcPhKnwfckytJL5la/b.O',
+       email         = 'admin@vehiqilla.com',
+       role          = 'admin',
+       is_active     = true,
+       org_id        = '550e8400-e29b-41d4-a716-446655440000'
+ WHERE username = 'admin@vehiqilla.com';
+
+UPDATE users
+   SET password_hash = '$2b$12$Ukx0JWyMiDGt3Hah9ignY.LwvbHW6CSHlcPhKnwfckytJL5la/b.O',
+       email         = 'ajkhan@vehiqilla.com',
+       role          = 'admin',
+       is_active     = true,
+       org_id        = '550e8400-e29b-41d4-a716-446655440000'
+ WHERE username = 'ajkhan@vehiqilla.com';
 
 -- Seed canonical 9 connectors. These names/types are the single source of
 -- truth used everywhere (VFSOC_Admin, VFSOC-SIEM, VFSOC-Ingestion,

@@ -142,9 +142,10 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 
-# VFSOC: generated absolute-path launcher batch files (per-machine; produced
-# by VFSOC_Extras\install-shortcuts.cmd).
-scripts/launchers/
+# VFSOC: launcher scripts are now version-controlled (machine-portable;
+# they resolve absolute paths at runtime from vfsoc.config.json). Only the
+# per-machine launcher logs are excluded.
+scripts/launchers/logs/
 
 # VFSOC: temporary commit message buffers
 .git/COMMITMSG.tmp
